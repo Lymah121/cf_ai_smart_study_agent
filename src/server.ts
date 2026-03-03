@@ -7,123 +7,155 @@ import {
   convertToModelMessages,
   pruneMessages,
   tool,
-  stepCountIs
+  stepCountIs,
 } from "ai";
 import { z } from "zod";
 
-export class ChatAgent extends AIChatAgent<Env> {
-  // Wait for MCP connections to restore after hibernation before processing messages
-  waitForMcpConnections = true;
+// ── State types ───────────────────────────────────────────────────────
 
-  onStart() {
-    // Configure OAuth popup behavior for MCP servers that require authentication
-    this.mcp.configureOAuthCallback({
-      customHandler: (result) => {
-        if (result.authSuccess) {
-          return new Response("<script>window.close();</script>", {
-            headers: { "content-type": "text/html" },
-            status: 200
-          });
-        }
-        return new Response(
-          `Authentication Failed: ${result.authError || "Unknown error"}`,
-          { headers: { "content-type": "text/plain" }, status: 400 }
-        );
-      }
-    });
-  }
+type StudyState = {
+  topicsStudied: string[];
+  flashcardsGenerated: number;
+  quizzesTaken: number;
+  summariesCreated: number;
+  currentStreak: number;
+  lastStudyDate: string | null;
+  totalSessions: number;
+};
 
-  @callable()
-  async addServer(name: string, url: string, host: string) {
-    return await this.addMcpServer(name, url, { callbackHost: host });
-  }
+// ── Study Agent ───────────────────────────────────────────────────────
 
-  @callable()
-  async removeServer(serverId: string) {
-    await this.removeMcpServer(serverId);
-  }
+export class ChatAgent extends AIChatAgent<Env, StudyState> {
+  initialState: StudyState = {
+    topicsStudied: [],
+    flashcardsGenerated: 0,
+    quizzesTaken: 0,
+    summariesCreated: 0,
+    currentStreak: 0,
+    lastStudyDate: null,
+    totalSessions: 0,
+  };
 
   async onChatMessage(_onFinish: unknown, options?: OnChatMessageOptions) {
-    const mcpTools = this.mcp.getAITools();
     const workersai = createWorkersAI({ binding: this.env.AI });
 
+    // Update study streak on each interaction
+    this._updateStreak();
+
+    // Use glm-4.7-flash which properly supports tool calling via Workers AI
     const result = streamText({
       model: workersai("@cf/zai-org/glm-4.7-flash"),
-      system: `You are a helpful assistant. You can check the weather, get the user's timezone, run calculations, and schedule tasks.
+      system: `You are StudyBot, an AI study companion. Your job is to help users learn effectively.
+
+When users want to study a topic, you should:
+1. First call the trackStudyActivity tool to log the activity
+2. Then provide the actual content (flashcards, quiz, or summary) in your response
+
+For FLASHCARDS: Create numbered Q&A pairs with "Q:" and "A:" format.
+For QUIZZES: Create multiple-choice questions with options A-D and the answer.
+For SUMMARIES: Use headings, bullet points, and key takeaways.
+For general questions: Just answer clearly and helpfully.
+
+Always use the trackStudyActivity tool before generating study content.
+Use getStudyProgress when the user asks about their stats.
 
 ${getSchedulePrompt({ date: new Date() })}
 
-If the user asks to schedule a task, use the schedule tool to schedule the task.`,
-      // Prune old tool calls to save tokens on long conversations
+Be encouraging, use markdown formatting, and keep things clear.`,
+
       messages: pruneMessages({
         messages: await convertToModelMessages(this.messages),
-        toolCalls: "before-last-2-messages"
+        toolCalls: "before-last-2-messages",
       }),
-      tools: {
-        // MCP tools from connected servers
-        ...mcpTools,
 
-        // Server-side tool: runs automatically on the server
-        getWeather: tool({
-          description: "Get the current weather for a city",
+      tools: {
+        // Tracks study activity in persistent state
+        trackStudyActivity: tool({
+          description:
+            "Track a study activity. Call this whenever you generate flashcards, create a quiz, or summarize a topic. This updates the user's study progress dashboard.",
           inputSchema: z.object({
-            city: z.string().describe("City name")
+            topic: z.string().describe("The topic being studied"),
+            activityType: z
+              .enum(["flashcards", "quiz", "summary"])
+              .describe("Type of study activity"),
+            count: z
+              .number()
+              .optional()
+              .describe("Number of items generated"),
           }),
-          execute: async ({ city }) => {
-            // Replace with a real weather API in production
-            const conditions = ["sunny", "cloudy", "rainy", "snowy"];
-            const temp = Math.floor(Math.random() * 30) + 5;
+          execute: async ({ topic, activityType, count }) => {
+            this._addTopic(topic);
+            const updates = { ...this.state };
+            if (activityType === "flashcards") {
+              updates.flashcardsGenerated += count || 5;
+            } else if (activityType === "quiz") {
+              updates.quizzesTaken += 1;
+            } else if (activityType === "summary") {
+              updates.summariesCreated += 1;
+            }
+            this.setState(updates);
             return {
-              city,
-              temperature: temp,
-              condition:
-                conditions[Math.floor(Math.random() * conditions.length)],
-              unit: "celsius"
+              tracked: true,
+              topic,
+              activityType,
+              message: `Tracked ${activityType} activity for "${topic}". Now generate the ${activityType} content for the user.`,
             };
-          }
+          },
         }),
 
-        // Client-side tool: no execute function — the browser handles it
+        // Returns study progress stats
+        getStudyProgress: tool({
+          description:
+            "Get the user's study progress. Use when they ask about their stats, progress, or history.",
+          inputSchema: z.object({}),
+          execute: async () => {
+            return {
+              topicsStudied: this.state.topicsStudied,
+              totalTopics: this.state.topicsStudied.length,
+              flashcardsGenerated: this.state.flashcardsGenerated,
+              quizzesTaken: this.state.quizzesTaken,
+              summariesCreated: this.state.summariesCreated,
+              currentStreak: this.state.currentStreak,
+              lastStudyDate: this.state.lastStudyDate,
+              totalSessions: this.state.totalSessions,
+            };
+          },
+        }),
+
+        // Client-side tool — browser provides the timezone
         getUserTimezone: tool({
           description:
-            "Get the user's timezone from their browser. Use this when you need to know the user's local time.",
-          inputSchema: z.object({})
+            "Get the user's timezone from their browser for scheduling.",
+          inputSchema: z.object({}),
         }),
 
-        // Approval tool: requires user confirmation before executing
-        calculate: tool({
-          description:
-            "Perform a math calculation with two numbers. Requires user approval for large numbers.",
+        // Approval-gated — user must confirm
+        resetStudyProgress: tool({
+          description: "Reset all study progress. Requires user approval.",
           inputSchema: z.object({
-            a: z.number().describe("First number"),
-            b: z.number().describe("Second number"),
-            operator: z
-              .enum(["+", "-", "*", "/", "%"])
-              .describe("Arithmetic operator")
+            confirmation: z
+              .string()
+              .describe('Should be "reset"'),
           }),
-          needsApproval: async ({ a, b }) =>
-            Math.abs(a) > 1000 || Math.abs(b) > 1000,
-          execute: async ({ a, b, operator }) => {
-            const ops: Record<string, (x: number, y: number) => number> = {
-              "+": (x, y) => x + y,
-              "-": (x, y) => x - y,
-              "*": (x, y) => x * y,
-              "/": (x, y) => x / y,
-              "%": (x, y) => x % y
-            };
-            if (operator === "/" && b === 0) {
-              return { error: "Division by zero" };
-            }
-            return {
-              expression: `${a} ${operator} ${b}`,
-              result: ops[operator](a, b)
-            };
-          }
+          needsApproval: async () => true,
+          execute: async () => {
+            this.setState({
+              topicsStudied: [],
+              flashcardsGenerated: 0,
+              quizzesTaken: 0,
+              summariesCreated: 0,
+              currentStreak: 0,
+              lastStudyDate: null,
+              totalSessions: 0,
+            });
+            return { success: true, message: "Study progress has been reset." };
+          },
         }),
 
-        scheduleTask: tool({
+        // Schedule study reminders
+        scheduleStudyReminder: tool({
           description:
-            "Schedule a task to be executed at a later time. Use this when the user asks to be reminded or wants something done later.",
+            "Schedule a study reminder. Use when the user wants to be reminded to study.",
           inputSchema: scheduleSchema,
           execute: async ({ when, description }) => {
             if (when.type === "no-schedule") {
@@ -140,59 +172,87 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             if (!input) return "Invalid schedule type";
             try {
               this.schedule(input, "executeTask", description);
-              return `Task scheduled: "${description}" (${when.type}: ${input})`;
+              return `Reminder scheduled: "${description}" (${when.type}: ${input})`;
             } catch (error) {
-              return `Error scheduling task: ${error}`;
+              return `Error scheduling: ${error}`;
             }
-          }
+          },
         }),
 
-        getScheduledTasks: tool({
-          description: "List all tasks that have been scheduled",
+        getScheduledReminders: tool({
+          description: "List all scheduled study reminders",
           inputSchema: z.object({}),
           execute: async () => {
             const tasks = this.getSchedules();
-            return tasks.length > 0 ? tasks : "No scheduled tasks found.";
-          }
+            return tasks.length > 0 ? tasks : "No reminders scheduled.";
+          },
         }),
 
-        cancelScheduledTask: tool({
-          description: "Cancel a scheduled task by its ID",
+        cancelReminder: tool({
+          description: "Cancel a scheduled reminder by its ID",
           inputSchema: z.object({
-            taskId: z.string().describe("The ID of the task to cancel")
+            reminderId: z.string().describe("Reminder ID to cancel"),
           }),
-          execute: async ({ taskId }) => {
+          execute: async ({ reminderId }) => {
             try {
-              this.cancelSchedule(taskId);
-              return `Task ${taskId} cancelled.`;
+              this.cancelSchedule(reminderId);
+              return `Reminder ${reminderId} cancelled.`;
             } catch (error) {
-              return `Error cancelling task: ${error}`;
+              return `Error cancelling: ${error}`;
             }
-          }
-        })
+          },
+        }),
       },
+
       stopWhen: stepCountIs(5),
-      abortSignal: options?.abortSignal
+      abortSignal: options?.abortSignal,
     });
 
     return result.toUIMessageStreamResponse();
   }
 
+  // Runs when a scheduled reminder fires
   async executeTask(description: string, _task: Schedule<string>) {
-    // Do the actual work here (send email, call API, etc.)
-    console.log(`Executing scheduled task: ${description}`);
-
-    // Notify connected clients via a broadcast event.
-    // We use broadcast() instead of saveMessages() to avoid injecting
-    // into chat history — that would cause the AI to see the notification
-    // as new context and potentially loop.
+    console.log(`Study reminder fired: ${description}`);
     this.broadcast(
       JSON.stringify({
-        type: "scheduled-task",
+        type: "study-reminder",
         description,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       })
     );
+  }
+
+  @callable()
+  async getProgress(): Promise<StudyState> {
+    return this.state;
+  }
+
+  private _addTopic(topic: string) {
+    const normalized = topic.toLowerCase().trim();
+    if (!this.state.topicsStudied.includes(normalized)) {
+      this.setState({
+        ...this.state,
+        topicsStudied: [...this.state.topicsStudied, normalized],
+      });
+    }
+  }
+
+  private _updateStreak() {
+    const today = new Date().toISOString().split("T")[0];
+    const lastDate = this.state.lastStudyDate;
+    if (lastDate === today) return;
+
+    const yesterday = new Date(Date.now() - 86400000)
+      .toISOString()
+      .split("T")[0];
+
+    this.setState({
+      ...this.state,
+      currentStreak: lastDate === yesterday ? this.state.currentStreak + 1 : 1,
+      lastStudyDate: today,
+      totalSessions: this.state.totalSessions + 1,
+    });
   }
 }
 
@@ -202,5 +262,5 @@ export default {
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
     );
-  }
+  },
 } satisfies ExportedHandler<Env>;
