@@ -7,7 +7,7 @@ import {
   convertToModelMessages,
   pruneMessages,
   tool,
-  stepCountIs,
+  stepCountIs
 } from "ai";
 import { z } from "zod";
 
@@ -33,7 +33,7 @@ export class ChatAgent extends AIChatAgent<Env, StudyState> {
     summariesCreated: 0,
     currentStreak: 0,
     lastStudyDate: null,
-    totalSessions: 0,
+    totalSessions: 0
   };
 
   async onChatMessage(_onFinish: unknown, options?: OnChatMessageOptions) {
@@ -65,7 +65,7 @@ Be encouraging, use markdown formatting, and keep things clear.`,
 
       messages: pruneMessages({
         messages: await convertToModelMessages(this.messages),
-        toolCalls: "before-last-2-messages",
+        toolCalls: "before-last-2-messages"
       }),
 
       tools: {
@@ -78,10 +78,7 @@ Be encouraging, use markdown formatting, and keep things clear.`,
             activityType: z
               .enum(["flashcards", "quiz", "summary"])
               .describe("Type of study activity"),
-            count: z
-              .number()
-              .optional()
-              .describe("Number of items generated"),
+            count: z.number().optional().describe("Number of items generated")
           }),
           execute: async ({ topic, activityType, count }) => {
             this._addTopic(topic);
@@ -98,9 +95,9 @@ Be encouraging, use markdown formatting, and keep things clear.`,
               tracked: true,
               topic,
               activityType,
-              message: `Tracked ${activityType} activity for "${topic}". Now generate the ${activityType} content for the user.`,
+              message: `Tracked ${activityType} activity for "${topic}". Now generate the ${activityType} content for the user.`
             };
-          },
+          }
         }),
 
         // Returns study progress stats
@@ -117,25 +114,23 @@ Be encouraging, use markdown formatting, and keep things clear.`,
               summariesCreated: this.state.summariesCreated,
               currentStreak: this.state.currentStreak,
               lastStudyDate: this.state.lastStudyDate,
-              totalSessions: this.state.totalSessions,
+              totalSessions: this.state.totalSessions
             };
-          },
+          }
         }),
 
         // Client-side tool — browser provides the timezone
         getUserTimezone: tool({
           description:
             "Get the user's timezone from their browser for scheduling.",
-          inputSchema: z.object({}),
+          inputSchema: z.object({})
         }),
 
         // Approval-gated — user must confirm
         resetStudyProgress: tool({
           description: "Reset all study progress. Requires user approval.",
           inputSchema: z.object({
-            confirmation: z
-              .string()
-              .describe('Should be "reset"'),
+            confirmation: z.string().describe('Should be "reset"')
           }),
           needsApproval: async () => true,
           execute: async () => {
@@ -146,10 +141,10 @@ Be encouraging, use markdown formatting, and keep things clear.`,
               summariesCreated: 0,
               currentStreak: 0,
               lastStudyDate: null,
-              totalSessions: 0,
+              totalSessions: 0
             });
             return { success: true, message: "Study progress has been reset." };
-          },
+          }
         }),
 
         // Schedule study reminders
@@ -176,7 +171,7 @@ Be encouraging, use markdown formatting, and keep things clear.`,
             } catch (error) {
               return `Error scheduling: ${error}`;
             }
-          },
+          }
         }),
 
         getScheduledReminders: tool({
@@ -185,13 +180,13 @@ Be encouraging, use markdown formatting, and keep things clear.`,
           execute: async () => {
             const tasks = this.getSchedules();
             return tasks.length > 0 ? tasks : "No reminders scheduled.";
-          },
+          }
         }),
 
         cancelReminder: tool({
           description: "Cancel a scheduled reminder by its ID",
           inputSchema: z.object({
-            reminderId: z.string().describe("Reminder ID to cancel"),
+            reminderId: z.string().describe("Reminder ID to cancel")
           }),
           execute: async ({ reminderId }) => {
             try {
@@ -200,12 +195,12 @@ Be encouraging, use markdown formatting, and keep things clear.`,
             } catch (error) {
               return `Error cancelling: ${error}`;
             }
-          },
-        }),
+          }
+        })
       },
 
       stopWhen: stepCountIs(5),
-      abortSignal: options?.abortSignal,
+      abortSignal: options?.abortSignal
     });
 
     return result.toUIMessageStreamResponse();
@@ -218,7 +213,7 @@ Be encouraging, use markdown formatting, and keep things clear.`,
       JSON.stringify({
         type: "study-reminder",
         description,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOString()
       })
     );
   }
@@ -233,7 +228,7 @@ Be encouraging, use markdown formatting, and keep things clear.`,
     if (!this.state.topicsStudied.includes(normalized)) {
       this.setState({
         ...this.state,
-        topicsStudied: [...this.state.topicsStudied, normalized],
+        topicsStudied: [...this.state.topicsStudied, normalized]
       });
     }
   }
@@ -251,7 +246,7 @@ Be encouraging, use markdown formatting, and keep things clear.`,
       ...this.state,
       currentStreak: lastDate === yesterday ? this.state.currentStreak + 1 : 1,
       lastStudyDate: today,
-      totalSessions: this.state.totalSessions + 1,
+      totalSessions: this.state.totalSessions + 1
     });
   }
 }
@@ -262,5 +257,5 @@ export default {
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
     );
-  },
+  }
 } satisfies ExportedHandler<Env>;

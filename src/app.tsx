@@ -9,7 +9,7 @@ import {
   InputArea,
   Empty,
   Surface,
-  Text,
+  Text
 } from "@cloudflare/kumo";
 import { Toasty, useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { Streamdown } from "streamdown";
@@ -35,7 +35,7 @@ import {
   ExamIcon,
   ListBulletsIcon,
   ArrowCounterClockwiseIcon,
-  SidebarIcon,
+  SidebarIcon
 } from "@phosphor-icons/react";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ function ThemeToggle() {
 
 function StudyProgressSidebar({
   studyState,
-  visible,
+  visible
 }: {
   studyState: StudyState;
   visible: boolean;
@@ -92,33 +92,33 @@ function StudyProgressSidebar({
     {
       label: "Topics Studied",
       value: studyState.topicsStudied.length,
-      icon: <BookOpenIcon size={18} className="text-blue-400" />,
+      icon: <BookOpenIcon size={18} className="text-blue-400" />
     },
     {
       label: "Flashcards",
       value: studyState.flashcardsGenerated,
-      icon: <CardsThreeIcon size={18} className="text-amber-400" />,
+      icon: <CardsThreeIcon size={18} className="text-amber-400" />
     },
     {
       label: "Quizzes Taken",
       value: studyState.quizzesTaken,
-      icon: <ExamIcon size={18} className="text-green-400" />,
+      icon: <ExamIcon size={18} className="text-green-400" />
     },
     {
       label: "Summaries",
       value: studyState.summariesCreated,
-      icon: <ListBulletsIcon size={18} className="text-purple-400" />,
+      icon: <ListBulletsIcon size={18} className="text-purple-400" />
     },
     {
       label: "Study Streak",
       value: `${studyState.currentStreak} day${studyState.currentStreak !== 1 ? "s" : ""}`,
-      icon: <LightningIcon size={18} className="text-orange-400" />,
+      icon: <LightningIcon size={18} className="text-orange-400" />
     },
     {
       label: "Total Sessions",
       value: studyState.totalSessions,
-      icon: <ClockIcon size={18} className="text-cyan-400" />,
-    },
+      icon: <ClockIcon size={18} className="text-cyan-400" />
+    }
   ];
 
   return (
@@ -189,7 +189,7 @@ function StudyProgressSidebar({
 
 function ToolPartView({
   part,
-  addToolApprovalResponse,
+  addToolApprovalResponse
 }: {
   part: UIMessage["parts"][number];
   addToolApprovalResponse: (response: {
@@ -210,7 +210,7 @@ function ToolPartView({
     resetStudyProgress: "🔄 Reset Progress",
     scheduleStudyReminder: "⏰ Schedule Reminder",
     getScheduledReminders: "📅 List Reminders",
-    cancelReminder: "❌ Cancel Reminder",
+    cancelReminder: "❌ Cancel Reminder"
   };
 
   const displayName = toolLabels[toolName] || toolName;
@@ -320,10 +320,7 @@ function ToolPartView({
       <div className="flex justify-start">
         <Surface className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
           <div className="flex items-center gap-2">
-            <GearIcon
-              size={14}
-              className="text-kumo-inactive animate-spin"
-            />
+            <GearIcon size={14} className="text-kumo-inactive animate-spin" />
             <Text size="xs" variant="secondary">
               Running {displayName}...
             </Text>
@@ -355,7 +352,7 @@ function Chat() {
     summariesCreated: 0,
     currentStreak: 0,
     lastStudyDate: null,
-    totalSessions: 0,
+    totalSessions: 0
   });
 
   const agent = useAgent({
@@ -377,7 +374,7 @@ function Chat() {
             toasts.add({
               title: "📚 Study Reminder",
               description: data.description,
-              timeout: 0,
+              timeout: 0
             });
           }
         } catch {
@@ -385,7 +382,7 @@ function Chat() {
         }
       },
       [toasts]
-    ),
+    )
   });
 
   const {
@@ -394,7 +391,7 @@ function Chat() {
     clearHistory,
     addToolApprovalResponse,
     stop,
-    status,
+    status
   } = useAgentChat({
     agent,
     onToolCall: async (event) => {
@@ -407,11 +404,11 @@ function Chat() {
           output: {
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             localTime: new Date().toLocaleTimeString(),
-            utcOffset: new Date().getTimezoneOffset(),
-          },
+            utcOffset: new Date().getTimezoneOffset()
+          }
         });
       }
-    },
+    }
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -443,7 +440,7 @@ function Chat() {
     "Summarize the theory of relativity",
     "Show my study progress",
     "Remind me to study in 30 minutes",
-    "What timezone am I in?",
+    "What timezone am I in?"
   ];
 
   return (
@@ -525,7 +522,7 @@ function Chat() {
                           onClick={() => {
                             sendMessage({
                               role: "user",
-                              parts: [{ type: "text", text: prompt }],
+                              parts: [{ type: "text", text: prompt }]
                             });
                           }}
                         >
@@ -573,8 +570,7 @@ function Chat() {
                         text: string;
                         state?: "streaming" | "done";
                       };
-                      const isDone =
-                        reasoning.state === "done" || !isStreaming;
+                      const isDone = reasoning.state === "done" || !isStreaming;
                       return (
                         <div key={i} className="flex justify-start">
                           <details

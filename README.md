@@ -18,13 +18,13 @@ Built with GLM-4.7-Flash (Workers AI), Durable Objects for persistent state, and
 
 The app runs entirely on Cloudflare's stack:
 
-| Component | What it does |
-|-----------|-------------|
-| **Workers AI** | Runs GLM-4.7-Flash (`@cf/zai-org/glm-4.7-flash`) for chat + tool calling — no external API keys |
-| **Durable Objects** | Each user gets their own agent instance with SQLite for chat history + study state |
-| **AIChatAgent** | Handles streaming AI responses, tool execution, message persistence, and WebSocket connections |
-| **Scheduling** | Uses Durable Object alarms for delayed/cron/scheduled study reminders |
-| **React + Vite** | Chat UI with a study progress sidebar, Cloudflare's Kumo design system |
+| Component           | What it does                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| **Workers AI**      | Runs GLM-4.7-Flash (`@cf/zai-org/glm-4.7-flash`) for chat + tool calling — no external API keys |
+| **Durable Objects** | Each user gets their own agent instance with SQLite for chat history + study state              |
+| **AIChatAgent**     | Handles streaming AI responses, tool execution, message persistence, and WebSocket connections  |
+| **Scheduling**      | Uses Durable Object alarms for delayed/cron/scheduled study reminders                           |
+| **React + Vite**    | Chat UI with a study progress sidebar, Cloudflare's Kumo design system                          |
 
 ```
 React Chat UI  ←— WebSocket —→  StudyBot Agent (Durable Object)
